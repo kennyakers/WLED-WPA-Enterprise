@@ -607,66 +607,24 @@ bool WLED::initEthernet()
 void WLED::initConnection()
 {
   #ifdef WLED_ENABLE_WEBSOCKETS
-  ws.onEvent(wsEvent);
+    ws.onEvent(wsEvent);
   #endif
 
+  #ifdef ESP8266
+    WiFi.setPhyMode(WIFI_PHY_MODE_11N); // 802.11n - least range, fast transfer rate, least current draw (STATION ONLY)
+  #endif
 
-  // Begin my new stuff
+  WiFi.disconnect(true);        // close old connections
 
-  char ssid[] = "XXX";
-  char username[] = "XXX";
-  char identity[] = "XXX";
-  char password[] = "XXX";
-
-  uint8_t target_esp_mac[6] = {0x24, 0x0a, 0xc4, 0x9a, 0x58, 0x27};
-
-  WiFi.disconnect(true);
-  wifi_set_opmode(STATION_MODE);
-
-  struct station_config wifi_config;
-
-  memset(&wifi_config, 0, sizeof(wifi_config));
-  strcpy((char*)wifi_config.ssid, ssid);
-  strcpy((char*)wifi_config.password, password);
-
-  wifi_station_set_config(&wifi_config);
-  wifi_set_macaddr(STATION_IF,target_esp_mac);
-  
-
-  wifi_station_set_wpa2_enterprise_auth(1);
-
-  // Clean up to be sure no old data is still inside
-  wifi_station_clear_cert_key();
-  wifi_station_clear_enterprise_ca_cert();
-  wifi_station_clear_enterprise_identity();
-  wifi_station_clear_enterprise_username();
-  wifi_station_clear_enterprise_password();
-  wifi_station_clear_enterprise_new_password();
-  
-  wifi_station_set_enterprise_identity((uint8*)identity, strlen(identity));
-  wifi_station_set_enterprise_username((uint8*)username, strlen(username));
-  wifi_station_set_enterprise_password((uint8*)password, strlen((char*)password));
-
-  wifi_station_connect();
-
-  DEBUG_PRINTLN("Connecting to " + String(ssid));
-  DEBUG_PRINTLN("MAC: " + WiFi.macAddress());
-
-#ifdef ESP8266
-  WiFi.setPhyMode(WIFI_PHY_MODE_11N);
-#endif
-
-  if (staticIP[0] != 0 && staticGateway[0] != 0) {
-    WiFi.config(staticIP, staticGateway, staticSubnet, IPAddress(1, 1, 1, 1));
-  } else {
-    WiFi.config(IPAddress((uint32_t)0), IPAddress((uint32_t)0), IPAddress((uint32_t)0));
-  }
+  // convert the "serverDescription" into a valid DNS hostname (alphanumeric)
+  char hostname[25];
+  prepareHostname(hostname);
 
   lastReconnectAttempt = millis();
 
   if (!WLED_WIFI_CONFIGURED) {
     DEBUG_PRINTLN(F("No connection configured."));
-    if (!apActive) initAP();        // instantly go to ap mode
+    if (!apActive) initAP(); // Instantly go to ap mode
     return;
   } else if (!apActive) {
     if (apBehavior == AP_BEHAVIOR_ALWAYS) {
@@ -678,27 +636,38 @@ void WLED::initConnection()
       WiFi.mode(WIFI_STA);
     }
   }
+
+  #ifdef WLED_ENTERPRISE_CONFIGURED
+    initWPA2EnterpriseConnection();
+  #else
+    initWPA2PersonalConnection();
+  #endif
+  
   showWelcomePage = false;
 
-  // convert the "serverDescription" into a valid DNS hostname (alphanumeric)
-  char hostname[25];
-  prepareHostname(hostname);
+  #ifdef ESP8266
+    WiFi.hostname(hostname);
+  #endif
 
-#ifdef ESP8266
-  WiFi.hostname(hostname);
-#endif
+  #ifdef WLED_ENTERPRISE_CONFIGURED
+    wifi_station_connect();
+  #else
+    WiFi.begin(clientSSID, clientPass);
+  #endif
 
-#ifdef ARDUINO_ARCH_ESP32
-  WiFi.setSleep(!noWifiSleep);
-  WiFi.setHostname(hostname);
-#else
-  wifi_set_sleep_type((noWifiSleep) ? NONE_SLEEP_T : MODEM_SLEEP_T);
-#endif
+  DEBUG_PRINTLN("Connecting to " + String(clientSSID));
+  DEBUG_PRINTLN("MAC: " + WiFi.macAddress());
+
+  #ifdef ARDUINO_ARCH_ESP32
+    WiFi.setSleep(!noWifiSleep);
+    WiFi.setHostname(hostname);
+  #else
+    wifi_set_sleep_type((noWifiSleep) ? NONE_SLEEP_T : MODEM_SLEEP_T);
+  #endif
 }
 
 void WLED::initInterfaces()
 {
-  DEBUG_PRINTLN(F("Init STA interfaces"));
 
 #ifndef WLED_DISABLE_HUESYNC
   IPAddress ipAddress = Network.localIP();
@@ -753,9 +722,6 @@ void WLED::initInterfaces()
   initMqtt();
   interfacesInited = true;
   wasConnected = true;
-
-  // Ken
-  DEBUG_PRINTLN(F("Init STA interfaces done"));
 }
 
 void WLED::handleConnection()
@@ -850,9 +816,6 @@ void WLED::handleConnection()
     usermods.connected();
     lastMqttReconnectAttempt = 0; // force immediate update
 
-    // Ken
-    DEBUG_PRINTLN(F("Done calling connected() functions!"));
-
     // shut down AP
     if (apBehavior != AP_BEHAVIOR_ALWAYS && apActive) {
       dnsServer.stop();
@@ -910,4 +873,44 @@ void WLED::handleStatusLED()
     #endif
   }
   #endif
+}
+
+void WLED::initWPA2PersonalConnection()
+{
+  if (staticIP[0] != 0 && staticGateway[0] != 0) {
+    WiFi.config(staticIP, staticGateway, staticSubnet, IPAddress(1, 1, 1, 1));
+  } else {
+    WiFi.config(IPAddress((uint32_t)0), IPAddress((uint32_t)0), IPAddress((uint32_t)0));
+  }
+
+  DEBUG_PRINT(F("[initWPA2PersonalConnection()] Connecting to "));
+  DEBUG_PRINT(clientSSID);
+  DEBUG_PRINTLN("...");
+}
+
+void WLED::initWPA2EnterpriseConnection()
+{
+  wifi_set_opmode(STATION_MODE);
+
+  struct station_config wifi_config;
+
+  memset(&wifi_config, 0, sizeof(wifi_config));
+  strcpy((char*)wifi_config.ssid, clientSSID);
+  strcpy((char*)wifi_config.password, clientPass);
+
+  wifi_station_set_config(&wifi_config);
+  wifi_station_set_wpa2_enterprise_auth(1);
+
+  // Clean up to be sure no old data is still inside
+  wifi_station_clear_cert_key();
+  wifi_station_clear_enterprise_ca_cert();
+  wifi_station_clear_enterprise_identity();
+  wifi_station_clear_enterprise_username();
+  wifi_station_clear_enterprise_password();
+  wifi_station_clear_enterprise_new_password();
+  
+  wifi_station_set_enterprise_identity((uint8*)clientUsername, strlen(clientUsername));
+  wifi_station_set_enterprise_username((uint8*)clientUsername, strlen(clientUsername));
+  wifi_station_set_enterprise_password((uint8*)clientPass, strlen((char*)clientPass));
+
 }

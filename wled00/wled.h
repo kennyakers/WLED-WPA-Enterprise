@@ -176,6 +176,10 @@ using PSRAMDynamicJsonDocument = BasicJsonDocument<PSRAM_Allocator>;
   #define CLIENT_PASS ""
 #endif
 
+#ifndef CLIENT_USER
+  #define CLIENT_USER ""
+#endif
+
 #if defined(WLED_AP_PASS) && !defined(WLED_AP_SSID)
   #error WLED_AP_PASS is defined but WLED_AP_SSID is still the default. \
          Please change WLED_AP_SSID to something unique.
@@ -285,6 +289,7 @@ WLED_GLOBAL char ntpServerName[33] _INIT("0.wled.pool.ntp.org");   // NTP server
 
 // WiFi CONFIG (all these can be changed via web UI, no need to set them here)
 WLED_GLOBAL char clientSSID[33] _INIT(CLIENT_SSID);
+WLED_GLOBAL char clientUsername[33] _INIT(CLIENT_USER);
 WLED_GLOBAL char clientPass[65] _INIT(CLIENT_PASS);
 WLED_GLOBAL char cmDNS[33] _INIT("x");                             // mDNS address (placeholder, is replaced by wledXXXXXX.local)
 WLED_GLOBAL char apSSID[33] _INIT("");                             // AP off by default (unless setup)
@@ -766,6 +771,7 @@ WLED_GLOBAL volatile uint8_t jsonBufferLock _INIT(0);
   #define WLED_CONNECTED (WiFi.status() == WL_CONNECTED)
 #endif
 #define WLED_WIFI_CONFIGURED (strlen(clientSSID) >= 1 && strcmp(clientSSID, DEFAULT_CLIENT_SSID) != 0)
+#define WLED_ENTERPRISE_CONFIGURED (WLED_WIFI_CONFIGURED && strlen(clientUsername) >= 1)
 #define WLED_MQTT_CONNECTED (mqtt != nullptr && mqtt->connected())
 
 #ifndef WLED_AP_SSID_UNIQUE
@@ -819,5 +825,7 @@ public:
   void handleStatusLED();
   void enableWatchdog();
   void disableWatchdog();
+  void initWPA2PersonalConnection();
+  void initWPA2EnterpriseConnection();
 };
 #endif        // WLED_H

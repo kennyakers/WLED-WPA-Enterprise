@@ -37,6 +37,7 @@ bool deserializeConfig(JsonObject doc, bool fromFS) {
 
   JsonObject nw_ins_0 = doc["nw"]["ins"][0];
   getStringFromJson(clientSSID, nw_ins_0[F("ssid")], 33);
+  getStringFromJson(clientUsername, nw_ins_0[F("user")], 33);
   //int nw_ins_0_pskl = nw_ins_0[F("pskl")];
   //The WiFi PSK is normally not contained in the regular file for security reasons.
   //If it is present however, we will use it
@@ -631,6 +632,7 @@ void serializeConfig() {
   JsonObject nw_ins_0 = nw_ins.createNestedObject();
   nw_ins_0[F("ssid")] = clientSSID;
   nw_ins_0[F("pskl")] = strlen(clientPass);
+  nw_ins_0[F("user")] = clientUsername;
 
   JsonArray nw_ins_0_ip = nw_ins_0.createNestedArray("ip");
   JsonArray nw_ins_0_gw = nw_ins_0.createNestedArray("gw");

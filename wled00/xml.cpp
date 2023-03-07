@@ -295,6 +295,7 @@ void getSettingsJS(byte subPage, char* dest)
   if (subPage == 1)
   {
     sappends('s',SET_F("CS"),clientSSID);
+    sappends('s',SET_F("CU"),clientUsername);
 
     byte l = strlen(clientPass);
     char fpass[l+1]; //fill password field with ***
